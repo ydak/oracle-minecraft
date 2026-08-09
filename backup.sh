@@ -126,11 +126,18 @@ echo " 完了"
 # does not have to hold a second copy of the world.
 echo -n "  ワールドを取り出し中 "
 copy_log=$(mktemp)
+# Only worlds. The rest of the volume is the Bedrock server itself, which the
+# container downloads again on every start, plus files the image rewrites from
+# the environment variables in run.sh. Carrying all of it made a barely played
+# world into a 157MB archive, and restoring it would put an old server binary
+# back over a current one.
+#
 # VOLUME_PATH is a constant defined here, so expanding it locally is what is
 # wanted.
 # shellcheck disable=SC2029
 ssh "${ssh_opts[@]}" "ubuntu@${external_ip}" \
-  "sudo tar czf - -C ${VOLUME_PATH} ." > "$local_file" 2> "$copy_log" &
+  "sudo test -d ${VOLUME_PATH}/worlds || { echo 'worlds が見つかりませんでした' >&2; exit 1; }
+   sudo tar czf - -C ${VOLUME_PATH} worlds" > "$local_file" 2> "$copy_log" &
 copy_status=0
 wait_with_dots $! || copy_status=$?
 
@@ -220,8 +227,12 @@ rm -f "$put_log"
 echo " 完了"
 
 size=$(du -h "$local_file" | cut -f1)
-rm -f "$local_file"
 
+# The copy in the home directory is kept rather than cleaned up. Cloud Shell has
+# no command that downloads a file: the only way to get one onto your own
+# machine is the Menu, which asks for the name of a file in the home directory.
+# Leaving it there is what makes that possible, and the name is printed so it
+# can be typed straight in.
 cat <<EOS
 
 バックアップが完了しました。
@@ -230,6 +241,17 @@ cat <<EOS
  サイズ : ${size}
 
 戻す場合はメニューから restore を選んでください。
+
+--------------------------------------------------------------------
+ 手元のパソコンに保存したい場合
+--------------------------------------------------------------------
+Cloud Shell 右上の [Menu] から [Download] を選び、下記を入力します。
+
+  ${object_name}
+
+不要であれば、下記で消せます。
+
+  rm ~/${object_name}
 
 無料枠のオブジェクト・ストレージは 20GB までです。古いものは
 コンソールの「ストレージ → バケット」から削除できます。

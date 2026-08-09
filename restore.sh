@@ -186,13 +186,18 @@ echo " 完了"
 # than either one.
 echo -n "  ワールドを書き戻し中 "
 put_log=$(mktemp)
-# find rather than rm with a glob: a glob skips dot files, and anything the
-# backup does not carry has to go for the restore to be exact.
+# Only worlds is removed, and the whole directory goes rather than its contents:
+# that takes the dot files with it, and unpacking over a world left in place
+# would keep any file the backup does not have. A world made of two different
+# saves is worse than either one.
+#
+# The rest of the volume is left alone. It holds the Bedrock server itself,
+# which has nothing to do with which save is loaded.
 #
 # VOLUME_PATH is a constant defined here, so expanding it locally is intended.
 # shellcheck disable=SC2029
 ssh "${ssh_opts[@]}" "ubuntu@${external_ip}" \
-  "sudo find ${VOLUME_PATH} -mindepth 1 -delete && sudo tar xzf - -C ${VOLUME_PATH}" \
+  "sudo rm -rf ${VOLUME_PATH}/worlds && sudo tar xzf - -C ${VOLUME_PATH}" \
   < "$local_file" > "$put_log" 2>&1 &
 put_status=0
 wait_with_dots $! || put_status=$?
