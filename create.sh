@@ -95,6 +95,86 @@ if [ -n "$existing" ] && [ "$existing" != "null" ]; then
   exit 1
 fi
 
+# BUDGET ==========
+# Set up before anything is built, so the alarm is already in place by the time
+# there is something that could cost money.
+#
+# On a free account nothing outside Always Free can be created at all, which is
+# the real safeguard. Upgrading to Pay As You Go removes that wall in exchange
+# for Ampere capacity being obtainable, and a budget is what replaces it.
+#
+# It only notifies. Nothing here stops a charge from happening.
+budget_name=minecraft-budget
+
+existing_budget=$(oci budgets budget list --compartment-id "$compartment_id" \
+  --display-name "$budget_name" --query 'data[0].id' --raw-output 2> /dev/null || true)
+
+if [ -n "$existing_budget" ] && [ "$existing_budget" != "null" ]; then
+  echo "  予算アラートは設定済みです"
+else
+  # The console account's own address is the obvious default, but the variable
+  # holding it is not documented, so its absence has to be survivable.
+  default_email=""
+  if [ -n "${OCI_CS_USER_OCID:-}" ]; then
+    default_email=$(oci iam user get --user-id "$OCI_CS_USER_OCID" \
+      --query 'data.email' --raw-output 2> /dev/null || true)
+    if [ "$default_email" == "null" ]; then default_email="" ; fi
+  fi
+
+  cat <<EOS
+
+-*-*-*-*- [BUDGET (予算アラート)] -*-*-*-*-
+
+無料枠を超える操作が起きた場合に、メールで通知します。
+1 ドルを超えた時点で届くので、少額のうちに気付けます。
+
+[WARN] 通知するだけで、課金を止めるものではありません。
+
+空欄のまま Enter を押すと作成しません。
+EOS
+  echo -n "通知先メールアドレス${default_email:+ (Default: ${default_email})}: "
+  read -r budget_email
+  if [ "$budget_email" == "" ]; then budget_email=$default_email ; fi
+
+  if [ -z "$budget_email" ]; then
+    echo "  予算アラートは作成しません"
+  else
+    echo -n "  予算アラートを作成中 "
+    budget_out=$(mktemp)
+    budget_log=$(mktemp)
+    (
+      set -e
+      budget_id=$(oci budgets budget create --compartment-id "$compartment_id" \
+        --target-type COMPARTMENT --targets "[\"$compartment_id\"]" \
+        --amount 1 --reset-period MONTHLY --display-name "$budget_name" \
+        --query 'data.id' --raw-output)
+
+      oci budgets alert-rule create --budget-id "$budget_id" \
+        --type ACTUAL --threshold 100 --threshold-type PERCENTAGE \
+        --recipients "$budget_email" \
+        --display-name "${budget_name}-alert" > /dev/null
+    ) > "$budget_out" 2> "$budget_log" &
+    budget_status=0
+    wait_with_dots $! || budget_status=$?
+
+    if [ "$budget_status" -eq 0 ]; then
+      echo " 完了"
+    else
+      # Not fatal. Creating the server is what was asked for, and failing to
+      # arm a notification is not a reason to refuse to do it.
+      echo " 失敗"
+      echo ""
+      echo "[WARN] 予算アラートを作成できませんでした。処理は続行します。"
+      echo "       コンソールの Billing → Budgets から手動で設定できます。"
+      echo "--------------------------------------------------------------------"
+      cat "$budget_log"
+      echo "--------------------------------------------------------------------"
+      echo ""
+    fi
+    rm -f "$budget_out" "$budget_log"
+  fi
+fi
+
 # SHAPE ==========
 # Asked before anything is built, because the answer decides which image to look
 # for: the A1 is Arm and the micro is x86.
