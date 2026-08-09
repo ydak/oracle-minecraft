@@ -51,6 +51,8 @@ if [ -z "$instance_id" ] || [ "$instance_id" == "null" ]; then
 EOS
   exit 0
 fi
+shape=$(oci compute instance get --instance-id "$instance_id" \
+  --query 'data.shape' --raw-output 2> /dev/null || true)
 echo " 完了"
 
 cat <<EOS
@@ -58,13 +60,27 @@ cat <<EOS
 -*-*-*-*- [削除の確認] -*-*-*-*-
 
 サーバー '$SERVER_NAME' を削除します。
+シェイプ : ${shape:-(取得できませんでした)}
+
 ワールドのデータも一緒に消え、元に戻せません。
+EOS
+
+# Only the Ampere shape is worth hesitating over. The micro instances are
+# always available, so warning about losing one would be noise.
+case "$shape" in
+  *A1*)
+    cat <<EOS
 
 [WARN] 無料枠の Ampere A1 は空きの奪い合いです。
        一度手放すと、次に作成できる保証がありません。
        設定を変えたいだけであれば、削除する必要はありません。
 
 EOS
+    ;;
+  *)
+    echo ""
+    ;;
+esac
 
 echo -n "本当に削除しますか? [y/N]: "
 read -r delete_yn
