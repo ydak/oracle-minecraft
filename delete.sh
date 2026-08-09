@@ -99,8 +99,10 @@ term_log=$(mktemp)
 # Both streams into the log. Nothing is read back from this command, and the
 # CLI does not always put its errors on stderr: discarding stdout once left a
 # failure with no message at all.
+# SUCCEEDED, not TERMINATED: terminate returns a work request, so the states it
+# can be waited on are the request's own, not the instance's lifecycle.
 oci compute instance terminate --instance-id "$instance_id" --force \
-  --preserve-boot-volume false --wait-for-state TERMINATED \
+  --preserve-boot-volume false --wait-for-state SUCCEEDED \
   > "$term_log" 2>&1 &
 term_status=0
 wait_with_dots $! || term_status=$?
