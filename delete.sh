@@ -96,19 +96,38 @@ fi
 echo ""
 echo -n "  サーバーを削除中 "
 term_log=$(mktemp)
+# Both streams into the log. Nothing is read back from this command, and the
+# CLI does not always put its errors on stderr: discarding stdout once left a
+# failure with no message at all.
 oci compute instance terminate --instance-id "$instance_id" --force \
   --preserve-boot-volume false --wait-for-state TERMINATED \
-  > /dev/null 2> "$term_log" &
+  > "$term_log" 2>&1 &
 term_status=0
 wait_with_dots $! || term_status=$?
 
 if [ "$term_status" -ne 0 ]; then
   echo " 失敗"
   echo ""
-  echo "[ERROR] サーバーの削除に失敗しました。"
+  echo "[ERROR] サーバーの削除に失敗しました。(終了コード: $term_status)"
   echo "--------------------------------------------------------------------"
-  cat "$term_log"
+  # An empty log is itself worth saying out loud, rather than printing two
+  # rules with nothing between them.
+  if [ -s "$term_log" ]; then
+    cat "$term_log"
+  else
+    echo "(出力がありませんでした)"
+  fi
   echo "--------------------------------------------------------------------"
+  cat <<EOS
+
+インスタンスが残っているため、ネットワークは削除できません。
+先にインスタンスの削除を成功させる必要があります。
+
+下記で直接実行すると、詳しい原因が表示されます。
+
+  oci compute instance terminate --instance-id $instance_id --force --preserve-boot-volume false
+
+EOS
   rm -f "$term_log"
   exit 1
 fi
