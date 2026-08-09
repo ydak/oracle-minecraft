@@ -91,7 +91,12 @@ fi
 # before an instance can be reached. Each step checks for what it needs first,
 # so the script can be re-run after a failure without piling up duplicates.
 echo -n "  ネットワークを準備中 "
+# Two files, not one: --wait-for-state narrates its progress on stderr, and one
+# of those lines is "Waiting until the resource has entered state:
+# ('AVAILABLE',)". Sourcing a file with that in it is a bash syntax error, so
+# the result is written somewhere the log cannot reach.
 net_log=$(mktemp)
+net_out=$(mktemp)
 (
   set -e
 
@@ -143,16 +148,13 @@ net_log=$(mktemp)
       --dns-label mc --wait-for-state AVAILABLE --query 'data.id' --raw-output)
   fi
 
-  printf 'subnet_id=%q\n' "$subnet_id"
+  printf 'subnet_id=%q\n' "$subnet_id" > "$net_out"
 ) > "$net_log" 2>&1 &
-net_status=0
-wait_with_dots $! || net_status=$?
+wait_with_dots $! || true
 
 subnet_id=""
-if [ "$net_status" -eq 0 ]; then
-  # shellcheck disable=SC1090
-  . "$net_log"
-fi
+# shellcheck disable=SC1090
+. "$net_out"
 
 if [ -z "$subnet_id" ]; then
   echo " 失敗"
@@ -161,10 +163,10 @@ if [ -z "$subnet_id" ]; then
   echo "--------------------------------------------------------------------"
   cat "$net_log"
   echo "--------------------------------------------------------------------"
-  rm -f "$net_log"
+  rm -f "$net_log" "$net_out"
   exit 1
 fi
-rm -f "$net_log"
+rm -f "$net_log" "$net_out"
 echo " 完了"
 
 # IMAGE ==========
@@ -172,10 +174,11 @@ echo " 完了"
 # the same query on x86 would return the amd64 builds instead.
 echo -n "  イメージを検索中 "
 image_out=$(mktemp)
+image_log=$(mktemp)
 oci compute image list --compartment-id "$compartment_id" \
   --operating-system "Canonical Ubuntu" --operating-system-version "24.04" \
   --shape "$SHAPE" --sort-by TIMECREATED \
-  --query 'data[0].id' --raw-output > "$image_out" 2>&1 &
+  --query 'data[0].id' --raw-output > "$image_out" 2> "$image_log" &
 wait_with_dots $! || true
 image_id=$(tr -d '\r\n' < "$image_out")
 
@@ -184,12 +187,12 @@ if [ -z "$image_id" ] || [ "$image_id" == "null" ]; then
   echo ""
   echo "[ERROR] Ubuntu 24.04 のイメージが見つかりませんでした。"
   echo "--------------------------------------------------------------------"
-  cat "$image_out"
+  cat "$image_log"
   echo "--------------------------------------------------------------------"
-  rm -f "$image_out"
+  rm -f "$image_out" "$image_log"
   exit 1
 fi
-rm -f "$image_out"
+rm -f "$image_out" "$image_log"
 echo " 完了"
 
 # SSH KEY ==========
@@ -222,6 +225,9 @@ echo -n "作成中 "
 attempt=0
 started=$SECONDS
 instance_id=""
+# Same split as the network step: --wait-for-state writes its progress to
+# stderr, so only stdout may be read back as the instance id.
+launch_out=$(mktemp)
 launch_log=$(mktemp)
 
 while true; do
@@ -238,12 +244,12 @@ while true; do
     --assign-public-ip true \
     --ssh-authorized-keys-file "${ssh_key}.pub" \
     --wait-for-state RUNNING \
-    --query 'data.id' --raw-output > "$launch_log" 2>&1 &
+    --query 'data.id' --raw-output > "$launch_out" 2> "$launch_log" &
   launch_status=0
   wait_with_dots $! || launch_status=$?
 
   if [ "$launch_status" -eq 0 ]; then
-    instance_id=$(tr -d '\r\n' < "$launch_log")
+    instance_id=$(tr -d '\r\n' < "$launch_out")
     break
   fi
 
@@ -256,7 +262,7 @@ while true; do
     echo "--------------------------------------------------------------------"
     cat "$launch_log"
     echo "--------------------------------------------------------------------"
-    rm -f "$launch_log"
+    rm -f "$launch_out" "$launch_log"
     exit 1
   fi
 
@@ -267,27 +273,32 @@ while true; do
   echo ""
   echo -n "作成中 "
 done
-rm -f "$launch_log"
+rm -f "$launch_out" "$launch_log"
 echo " 完了"
 
 # PUBLIC IP ==========
 echo -n "  IP アドレスを取得中 "
 ip_out=$(mktemp)
+ip_log=$(mktemp)
 (
   vnic_id=$(oci compute instance list-vnics --instance-id "$instance_id" \
-    --query 'data[0]."id"' --raw-output)
+    --query 'data[0].id' --raw-output)
   oci network vnic get --vnic-id "$vnic_id" --query 'data."public-ip"' --raw-output
-) > "$ip_out" 2>&1 &
+) > "$ip_out" 2> "$ip_log" &
 wait_with_dots $! || true
 external_ip=$(tr -d '\r\n' < "$ip_out")
-rm -f "$ip_out"
 
 if [ -z "$external_ip" ] || [ "$external_ip" == "null" ]; then
   echo " 失敗"
   echo ""
   echo "[ERROR] 公開 IP アドレスを取得できませんでした。"
+  echo "--------------------------------------------------------------------"
+  cat "$ip_log"
+  echo "--------------------------------------------------------------------"
+  rm -f "$ip_out" "$ip_log"
   exit 1
 fi
+rm -f "$ip_out" "$ip_log"
 echo " 完了"
 
 cat <<EOS
