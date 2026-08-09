@@ -489,7 +489,9 @@ echo " 完了"
 # instance, and giving up an Ampere A1 can mean not getting another one. This
 # path also works on an instance that already exists, and can be re-run.
 echo -n "  接続を待機中 "
-ssh_opts=(-i "$ssh_key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+# -T because without it a remote tool can decide it is talking to a terminal and
+# start emitting cursor control, which lands in the middle of the progress dots.
+ssh_opts=(-T -i "$ssh_key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
           -o LogLevel=ERROR -o ConnectTimeout=10)
 
 (
@@ -537,6 +539,9 @@ setup_log=$(mktemp)
 ssh "${ssh_opts[@]}" "ubuntu@${external_ip}" "sudo bash -s" > "$setup_log" 2>&1 <<EOS &
 set -e
 export DEBIAN_FRONTEND=noninteractive
+# Same reason as -T above: with a terminal type set, apt draws progress with
+# escape sequences.
+export TERM=dumb
 
 apt-get update
 apt-get install -y docker.io
@@ -594,8 +599,11 @@ echo ""
 echo -n "マインクラフト起動中 "
 
 # The Bedrock binary is downloaded on the first container start, so this waits
-# on a download as well as a boot.
-if ! wait_for_server "$external_ip" 900; then
+# on a download as well as a boot. The third argument is where the answered
+# details are written, and without it the summary below has nothing to show.
+mc_info=$(mktemp)
+if ! wait_for_server "$external_ip" 900 "$mc_info"; then
+  rm -f "$mc_info"
   cat <<EOS
 
 [WARN] 15 分待ちましたが、サーバーが応答しませんでした。
@@ -608,6 +616,10 @@ if ! wait_for_server "$external_ip" 900; then
 EOS
   exit 1
 fi
+
+# shellcheck disable=SC1090
+. "$mc_info"
+rm -f "$mc_info"
 
 cat <<EOS
 
