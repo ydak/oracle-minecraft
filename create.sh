@@ -198,17 +198,35 @@ read -r shape_num
 if [ "$shape_num" == "" ]; then shape_num=2 ; fi
 num_validation "$shape_num" 2
 
+# The Minecraft settings follow from the answer too. Outbound transfer is 10TB a
+# month either way, so unlike the GCP build there is no reason to cut the view
+# distance down to hold traffic: memory and CPU are the only limits left, and
+# they differ by an order of magnitude between the two shapes.
 shape_config_opt=()
 if [ "$shape_num" == "1" ]; then
   SHAPE=$A1_SHAPE
   shape_label="${A1_SHAPE} (${A1_OCPUS} OCPU / ${A1_MEMORY_GB} GB)"
   shape_config_opt=(--shape-config "{\"ocpus\":${A1_OCPUS},\"memoryInGBs\":${A1_MEMORY_GB}}")
   arch_label="Ubuntu 24.04 (aarch64)"
+
+  # 12 GB leaves plenty of room. The view distance stays under Minecraft's own
+  # default of 32 because generating that far is work for two cores, not
+  # because of the allowance.
+  max_players=10
+  view_distance=16
 else
   SHAPE=$E2_SHAPE
   shape_label="${E2_SHAPE} (1 GB)"
   arch_label="Ubuntu 24.04 (x86_64)"
+
+  # Same memory as the GCP e2-micro, so the same modest numbers apply.
+  max_players=3
+  view_distance=10
 fi
+
+# Minecraft's own default. The GCP build cuts this to 5 minutes to stop idle
+# connections eating a 1GB allowance; here there is nothing to protect.
+player_idle_timeout=30
 
 # NETWORK ==========
 # OCI does not hand a new tenancy a usable network the way GCP does: a VCN, an
