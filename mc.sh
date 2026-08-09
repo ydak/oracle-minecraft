@@ -15,9 +15,8 @@ REPO="ydak/oracle-minecraft"
 REF="${REF:-main}"
 ACTION="${1:-}"
 
-# backup and restore are not ported yet. The menu offers only what exists, so
-# that choosing an entry cannot fail with a missing file.
-action_list=(create update config delete)
+# Every action has a script behind it, so the menu can offer all of them.
+action_list=(create update config backup restore delete)
 
 usage() {
   cat <<EOS
@@ -31,6 +30,8 @@ Then pick what to do from the menu.
   create   Create a Minecraft server (マインクラフトサーバーを作成)
   update   Update Minecraft and the host (マインクラフトとホストを更新)
   config   Change server settings (マインクラフトの設定を変更)
+  backup   Save the world to Object Storage (ワールドデータをバックアップ)
+  restore  Put a saved world back (ワールドデータを復元)
   delete   Delete the server (マインクラフトサーバーを削除)
 
 An action can also be given directly, which skips the menu.
@@ -45,14 +46,15 @@ EOS
 }
 
 case "$ACTION" in
-  "" | create | update | config | delete) ;;
+  "" | create | update | config | backup | restore | delete) ;;
   -h | --help | help)
     usage
     exit 0
     ;;
   *)
     echo "[ERROR] Unknown action: $ACTION"
-    echo "        (不明な操作です。create / update / config / delete のいずれかを指定して下さい。)"
+    echo "        (不明な操作です。create / update / config / backup / restore / delete の"
+    echo "         いずれかを指定して下さい。)"
     echo ""
     usage
     exit 1
@@ -145,12 +147,14 @@ if [ "$ACTION" == "" ]; then
 [1] create  (マインクラフトサーバーを作成)
 [2] update  (マインクラフトとホストを更新)
 [3] config  (マインクラフトの設定を変更)
-[4] delete  (マインクラフトサーバーを削除)
+[4] backup  (ワールドデータをバックアップ)
+[5] restore (ワールドデータを復元)
+[6] delete  (マインクラフトサーバーを削除)
 EOS
   echo -n "Select action (Default: 1): "
   read -r action_num < /dev/tty
   if [ "$action_num" == "" ]; then action_num=1 ; fi
-  num_validation "$action_num" 4
+  num_validation "$action_num" 6
   ACTION=${action_list[$action_num-1]}
 fi
 
