@@ -2,6 +2,20 @@
 
 Oracle Cloud の Always Free 枠で、統合版 (Bedrock) の Minecraft サーバーを立てるスクリプトです。
 
+## 事前に必要なこと
+
+**従量課金 (Pay As You Go) への切り替えを前提としています。** 無料アカウントのままでも動きますが、Ampere A1 の空きがまず出ません。実測で 61 分・14 回の試行で確保できず、切り替え後は 41 秒で確保できました。
+
+切り替えても **Always Free の枠は無料のまま**です。
+
+> "if you have a paid account, you will not be billed for any Always Free resources you are using"
+
+ただし無料枠を超える操作を拒否する壁は無くなります。`create` が予算アラートを作成しますが、**通知するだけで課金を止めるものではありません。**
+
+コンソールの **Billing & Cost Management → Upgrade and Manage Payment** から切り替えられます。カード登録時に 100 ドル相当の与信確保が入りますが、これは即座に取り消されます。
+
+## 使い方
+
 [Oracle Cloud Shell](https://cloud.oracle.com/?bdcstate=maximized&cloudshell=true) を開いて、下記を貼り付けます。
 
 ```bash
@@ -12,7 +26,9 @@ curl -fsSL https://raw.githubusercontent.com/ydak/oracle-minecraft/main/mc.sh | 
 
 ```
 [1] create  (マインクラフトサーバーを作成)
-[2] delete  (マインクラフトサーバーを削除)
+[2] update  (マインクラフトとホストを更新)
+[3] config  (マインクラフトの設定を変更)
+[4] delete  (マインクラフトサーバーを削除)
 ```
 
 ## 無料枠について

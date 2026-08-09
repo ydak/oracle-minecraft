@@ -232,9 +232,9 @@ cat <<EOS
 
 どちらを選んでも、下り通信 10TB/月 は変わりません。
 EOS
-echo -n "Select shape (Default: 2): "
+echo -n "Select shape (Default: 1): "
 read -r shape_num
-if [ "$shape_num" == "" ]; then shape_num=2 ; fi
+if [ "$shape_num" == "" ]; then shape_num=1 ; fi
 num_validation "$shape_num" 2
 
 # The Minecraft settings follow from the answer too. Outbound transfer is 10TB a
