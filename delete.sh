@@ -168,7 +168,7 @@ if [ "$net_num" == "2" ]; then
         --query 'data[0].id' --raw-output 2> /dev/null || true)
       if [ -n "$subnet_id" ] && [ "$subnet_id" != "null" ]; then
         oci network subnet delete --subnet-id "$subnet_id" --force \
-          --wait-for-state TERMINATED > /dev/null
+          --wait-for-state TERMINATED
       fi
 
       igw_id=$(oci network internet-gateway list --compartment-id "$compartment_id" \
@@ -176,12 +176,14 @@ if [ "$net_num" == "2" ]; then
         --query 'data[0].id' --raw-output 2> /dev/null || true)
       if [ -n "$igw_id" ] && [ "$igw_id" != "null" ]; then
         oci network internet-gateway delete --ig-id "$igw_id" --force \
-          --wait-for-state TERMINATED > /dev/null
+          --wait-for-state TERMINATED
       fi
 
       oci network vcn delete --vcn-id "$vcn_id" --force \
-        --wait-for-state TERMINATED > /dev/null
+        --wait-for-state TERMINATED
     fi
+  # Everything lands in one log, including each command's stdout: the log is
+  # only shown when something failed, so there is no noise to keep out of it.
   ) > "$net_log" 2>&1 &
   net_status=0
   wait_with_dots $! || net_status=$?

@@ -140,7 +140,6 @@ EOS
     echo "  予算アラートは作成しません"
   else
     echo -n "  予算アラートを作成中 "
-    budget_out=$(mktemp)
     budget_log=$(mktemp)
     (
       set -e
@@ -152,8 +151,10 @@ EOS
       oci budgets alert-rule create --budget-id "$budget_id" \
         --type ACTUAL --threshold 100 --threshold-type PERCENTAGE \
         --recipients "$budget_email" \
-        --display-name "${budget_name}-alert" > /dev/null
-    ) > "$budget_out" 2> "$budget_log" &
+        --display-name "${budget_name}-alert"
+    # One log for both streams. Nothing is read back, and the CLI does not
+    # always put its errors on stderr.
+    ) > "$budget_log" 2>&1 &
     budget_status=0
     wait_with_dots $! || budget_status=$?
 
@@ -171,7 +172,7 @@ EOS
       echo "--------------------------------------------------------------------"
       echo ""
     fi
-    rm -f "$budget_out" "$budget_log"
+    rm -f "$budget_log"
   fi
 fi
 
@@ -250,8 +251,7 @@ net_out=$(mktemp)
   sl_id=$(oci network vcn get --vcn-id "$vcn_id" --query 'data."default-security-list-id"' --raw-output)
 
   oci network route-table update --rt-id "$rt_id" --force \
-    --route-rules "[{\"destination\":\"0.0.0.0/0\",\"destinationType\":\"CIDR_BLOCK\",\"networkEntityId\":\"$igw_id\"}]" \
-    > /dev/null
+    --route-rules "[{\"destination\":\"0.0.0.0/0\",\"destinationType\":\"CIDR_BLOCK\",\"networkEntityId\":\"$igw_id\"}]"
 
   # This replaces the rule list rather than adding to it, so SSH has to be
   # restated here or the instance becomes unreachable.
@@ -261,7 +261,7 @@ net_out=$(mktemp)
        "tcpOptions":{"destinationPortRange":{"min":22,"max":22}}},
       {"protocol":"17","source":"0.0.0.0/0","isStateless":false,
        "udpOptions":{"destinationPortRange":{"min":19132,"max":19132}}}
-    ]' > /dev/null
+    ]'
 
   subnet_id=$(oci network subnet list --compartment-id "$compartment_id" \
     --vcn-id "$vcn_id" --display-name "$SUBNET_NAME" --query 'data[0].id' --raw-output 2> /dev/null || true)
