@@ -270,9 +270,14 @@ else
 より多くで遊ぶ場合は Ampere A1 を選んで下さい。"
 fi
 
-# Minecraft's own default. The GCP build cuts this to 5 minutes to stop idle
-# connections eating a 1GB allowance; here there is nothing to protect.
-player_idle_timeout=30
+# Disabled, against Minecraft's own default of 30 minutes. The GCP build cuts it
+# to 5 to stop idle connections eating a 1GB allowance, and there is nothing to
+# protect here.
+#
+# It also has to be off for farms to run. Ticking areas keep chunks going when
+# no player is nearby, but only while at least one player is somewhere in the
+# dimension, so a disconnect for idling stops the whole world.
+player_idle_timeout=0
 
 # SETTINGS ==========
 # Asked before the instance is built rather than after. Placing an Ampere A1 can
