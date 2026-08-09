@@ -74,6 +74,22 @@ fi
 rm -f "$find_log"
 echo " 完了"
 
+# The advice on how many players fit depends on the machine, and the two shapes
+# differ by an order of magnitude in memory.
+case "$shape" in
+  *A1*)
+    memory_label="12GB"
+    player_warn_over=20
+    player_hint="メモリが 12GB あるため、10 人程度までは余裕があります。"
+    ;;
+  *)
+    memory_label="1GB"
+    player_warn_over=4
+    player_hint="メモリが 1GB しかないため、3 人程度が実用上の上限です。
+より多くで遊ぶ場合は Ampere A1 で作り直して下さい。"
+    ;;
+esac
+
 # CURRENT SETTINGS ==========
 # Taken from the container's environment rather than server.properties: those
 # variables are what the next restart will write into the file, so they are the
@@ -275,7 +291,7 @@ cat <<EOS
 
 -*-*-*-*- [MAX PLAYERS (同時に接続できる最大人数)] -*-*-*-*-
 
-無料枠の e2-micro はメモリが 1GB しかないため、3 人程度が実用上の上限です。
+${player_hint}
 EOS
 echo -n "Max players (Default: ${max_players}): "
 read -r input
@@ -283,8 +299,8 @@ if [ "$input" != "" ]; then
   positive_num_validation "$input"
   max_players=$input
 fi
-if [ "$max_players" -ge 5 ]; then
-  echo "[WARN] $max_players 人はメモリ 1GB に収まらない可能性があります。"
+if [ "$max_players" -gt "$player_warn_over" ]; then
+  echo "[WARN] ${max_players} 人はメモリ ${memory_label} に収まらない可能性があります。"
 fi
 
 # VIEW DISTANCE ==========
@@ -292,10 +308,9 @@ cat <<EOS
 
 -*-*-*-*- [VIEW DISTANCE (描画距離。単位はチャンク)] -*-*-*-*-
 
-大きくすると遠くまで見えますが、通信量とメモリを多く使います。
-見える範囲の広さの二乗で効くため、通信量への影響が最も大きい設定です。
-Minecraft の既定は 32 ですが、作成時は通信量を抑えるため 5 にしています。
-景色を広く見たい場合は上げてください。指定できるのは 5 以上です。
+大きくすると遠くまで見えますが、メモリと CPU を多く使います。
+Minecraft の既定は 32 です。下り通信は 10TB/月 あるため、
+通信量のために抑える必要はありません。指定できるのは 5 以上です。
 EOS
 echo -n "View distance (Default: ${view_distance}): "
 read -r input
@@ -414,8 +429,10 @@ EOS
 
 プレイヤーから何チャンク先まで世界を動かすかです。
 大きくすると遠くの装置が動きますが、負荷が上がります。
-動いている範囲で起きた変化は接続中の全員へ送られるため、通信量も増えます。
-既定の 4 が最小値です。通信量を抑えたい場合は 4 のままにしてください。
+既定の 4 が最小値です。上げると CPU の負荷が増えます。
+統合版のサーバーは box64 による変換を挟んで動いているため、
+コア数ほどの余裕はありません。上げるなら 6 前後から試して下さい。
+接続中のプレイヤーから離れた装置を動かしたい場合に使います。
 指定できるのは 4 から 12 です。
 EOS
   echo -n "Tick distance (Default: ${tick_distance}): "
@@ -435,7 +452,9 @@ EOS
 -*-*-*-*- [PLAYER IDLE TIMEOUT (放置時の切断までの分数)] -*-*-*-*-
 
 操作しないまま指定の分数が過ぎると切断されます。
-0 を指定すると切断しません。放置による通信量を抑える効果があります。
+0 を指定すると切断しません。
+装置を動かし続けたい場合は 0 にして下さい。ticking area は
+同じディメンションに最低 1 人いないと動かず、切断されると止まります。
 EOS
   echo -n "Idle timeout (Default: ${player_idle_timeout}): "
   read -r input
