@@ -15,9 +15,9 @@ REPO="ydak/oracle-minecraft"
 REF="${REF:-main}"
 ACTION="${1:-}"
 
-# update, config, backup and restore are not ported yet. The menu offers only
-# what exists, so that choosing an entry cannot fail with a missing file.
-action_list=(create delete)
+# backup and restore are not ported yet. The menu offers only what exists, so
+# that choosing an entry cannot fail with a missing file.
+action_list=(create update config delete)
 
 usage() {
   cat <<EOS
@@ -29,13 +29,15 @@ Then pick what to do from the menu.
 (その後、メニューから操作を選択します。)
 
   create   Create a Minecraft server (マインクラフトサーバーを作成)
+  update   Update Minecraft and the host (マインクラフトとホストを更新)
+  config   Change server settings (マインクラフトの設定を変更)
   delete   Delete the server (マインクラフトサーバーを削除)
 
 An action can also be given directly, which skips the menu.
 (操作を引数で直接指定すると、メニューを省略できます。)
 
   ... | bash -s -- create
-  ... | bash -s -- delete
+  ... | bash -s -- config
 
 Set REF to use a branch or tag other than main.
 (REF を指定すると main 以外のブランチ・タグを利用できます。)
@@ -43,14 +45,14 @@ EOS
 }
 
 case "$ACTION" in
-  "" | create | delete) ;;
+  "" | create | update | config | delete) ;;
   -h | --help | help)
     usage
     exit 0
     ;;
   *)
     echo "[ERROR] Unknown action: $ACTION"
-    echo "        (不明な操作です。create または delete を指定して下さい。)"
+    echo "        (不明な操作です。create / update / config / delete のいずれかを指定して下さい。)"
     echo ""
     usage
     exit 1
@@ -141,12 +143,14 @@ if [ "$ACTION" == "" ]; then
 -*-*-*-*- [ACTION (操作を選択)] -*-*-*-*-
 
 [1] create  (マインクラフトサーバーを作成)
-[2] delete  (マインクラフトサーバーを削除)
+[2] update  (マインクラフトとホストを更新)
+[3] config  (マインクラフトの設定を変更)
+[4] delete  (マインクラフトサーバーを削除)
 EOS
   echo -n "Select action (Default: 1): "
   read -r action_num < /dev/tty
   if [ "$action_num" == "" ]; then action_num=1 ; fi
-  num_validation "$action_num" 2
+  num_validation "$action_num" 4
   ACTION=${action_list[$action_num-1]}
 fi
 

@@ -39,6 +39,6 @@ curl -fsSL https://raw.githubusercontent.com/ydak/oracle-minecraft/main/mc.sh | 
 | --- | --- |
 | `create` | 実装済み (A1 / E2 とも実機で確認) |
 | `delete` | 実装済み (実機で確認) |
-| `update` | 未着手 |
-| `config` | 未着手 |
+| `update` | 実装済み (未検証) |
+| `config` | 実装済み (未検証) |
 | `backup` / `restore` | 未着手 |
