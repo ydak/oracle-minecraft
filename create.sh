@@ -21,7 +21,13 @@ OCPUS=2
 MEMORY_GB=12
 
 # Retry interval when the region has no free host to place the instance on.
-RETRY_SECONDS=60
+RETRY_SECONDS=90
+
+# Launching is rate limited per user, and the limit is reached easily: a second
+# attempt was enough to be told "Too many requests". That answer clears by
+# waiting, so it is backed off rather than treated as a failure, doubling up to
+# this ceiling.
+MAX_RETRY_SECONDS=1800
 
 echo ""
 echo "==================== Minecraft サーバーの作成 ===================="
@@ -221,9 +227,19 @@ cat <<EOS
 
 EOS
 
+# The CLI retries some failures on its own, which turns one attempt here into
+# several calls to the API and reaches the rate limit sooner. A single failed
+# launch taking over a minute is what gives it away. The flag is not in the
+# usage guide, so ask the CLI whether it has it rather than assume.
+no_retry_opt=()
+if oci compute instance launch --help 2> /dev/null | grep -q -- '--no-retry'; then
+  no_retry_opt=(--no-retry)
+fi
+
 echo -n "作成中 "
 attempt=0
 started=$SECONDS
+wait_seconds=$RETRY_SECONDS
 instance_id=""
 # Same split as the network step: --wait-for-state writes its progress to
 # stderr, so only stdout may be read back as the instance id.
@@ -243,7 +259,7 @@ while true; do
     --display-name "$SERVER_NAME" \
     --assign-public-ip true \
     --ssh-authorized-keys-file "${ssh_key}.pub" \
-    --wait-for-state RUNNING \
+    --wait-for-state RUNNING "${no_retry_opt[@]}" \
     --query 'data.id' --raw-output > "$launch_out" 2> "$launch_log" &
   launch_status=0
   wait_with_dots $! || launch_status=$?
@@ -253,9 +269,20 @@ while true; do
     break
   fi
 
-  # Anything other than a placement failure will not clear by waiting, so it is
+  # Two answers are worth waiting on: no host free to place the instance, and
+  # being told to slow down. Anything else will not clear by waiting, so it is
   # reported straight away rather than retried for hours.
-  if ! grep -qi 'out of host capacity\|outofcapacity' "$launch_log"; then
+  if grep -qi 'out of host capacity\|outofcapacity' "$launch_log"; then
+    reason="空きがないため"
+  elif grep -qi 'toomanyrequests\|"status": *429' "$launch_log"; then
+    reason="リクエストの間隔が短すぎるため"
+    # Backed off rather than reset, and never lowered again: the limit is per
+    # user over time, so creeping back up would just trip it once more.
+    wait_seconds=$((wait_seconds * 2))
+    if [ "$wait_seconds" -gt "$MAX_RETRY_SECONDS" ]; then
+      wait_seconds=$MAX_RETRY_SECONDS
+    fi
+  else
     echo " 失敗"
     echo ""
     echo "[ERROR] インスタンスの作成に失敗しました。"
@@ -267,9 +294,10 @@ while true; do
   fi
 
   echo ""
-  printf '  空きがないため待機します (%d 回目, 経過 %d 分)\n' "$attempt" "$(( (SECONDS - started) / 60 ))"
+  printf '  %s待機します (%d 回目, 経過 %d 分, 次は %d 分後)\n' \
+    "$reason" "$attempt" "$(( (SECONDS - started) / 60 ))" "$(( wait_seconds / 60 ))"
   echo -n "  再試行まで "
-  sleep_with_dots "$RETRY_SECONDS"
+  sleep_with_dots "$wait_seconds"
   echo ""
   echo -n "作成中 "
 done
