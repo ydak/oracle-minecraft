@@ -214,6 +214,9 @@ if [ "$shape_num" == "1" ]; then
   # because of the allowance.
   max_players=10
   view_distance=16
+  memory_label="12GB"
+  player_warn_over=20
+  player_hint="メモリが 12GB あるため、10 人程度までは余裕があります。"
 else
   SHAPE=$E2_SHAPE
   shape_label="${E2_SHAPE} (1 GB)"
@@ -222,11 +225,117 @@ else
   # Same memory as the GCP e2-micro, so the same modest numbers apply.
   max_players=3
   view_distance=10
+  memory_label="1GB"
+  player_warn_over=4
+  player_hint="メモリが 1GB しかないため、3 人程度が実用上の上限です。
+より多くで遊ぶ場合は Ampere A1 を選んで下さい。"
 fi
 
 # Minecraft's own default. The GCP build cuts this to 5 minutes to stop idle
 # connections eating a 1GB allowance; here there is nothing to protect.
 player_idle_timeout=30
+
+# SETTINGS ==========
+# Asked before the instance is built rather than after. Placing an Ampere A1 can
+# take a while, and answering everything up front means the rest runs unattended
+# instead of stopping to ask once the machine is finally there.
+#
+# The view distance is not asked. Outbound transfer is 10TB a month, so the one
+# reason the GCP build had to raise it with the user is gone, and the shape
+# already decides a sensible value.
+cat <<EOS
+
+-*-*-*-*- [SERVER NAME (マインクラフトサーバー名を自由に決めて下さい)] -*-*-*-*-
+
+EOS
+echo -n "Server name (Default: ydak): "
+read -r server_name
+
+cat <<EOS
+
+-*-*-*-*- [GAME MODE (ゲームモードを選択)] -*-*-*-*-
+
+[1] survival (サバイバル)
+[2] creative (クリエイティブ)
+[3] adventure (アドベンチャー)
+EOS
+echo -n "Select game mode (Default: 1): "
+read -r game_mode_num
+if [ "$game_mode_num" == "" ]; then game_mode_num=1 ; fi
+num_validation "$game_mode_num" 3
+game_mode=${game_mode_list[$game_mode_num-1]}
+
+cat <<EOS
+
+-*-*-*-*- [DIFFICULTY (難易度を選択)] -*-*-*-*-
+
+[1] peaceful (ピースフル)
+[2] easy (イージー)
+[3] normal (ノーマル)
+[4] hard (ハード)
+EOS
+echo -n "Difficulty (Default: 3): "
+read -r difficulty_num
+if [ "$difficulty_num" == "" ]; then difficulty_num=3 ; fi
+num_validation "$difficulty_num" 4
+difficulty=${difficulty_list[$difficulty_num-1]}
+
+cat <<EOS
+
+-*-*-*-*- [CHEAT (チートを有効にするかどうか)] -*-*-*-*-
+
+[1] ON (有効)
+[2] OFF (無効)
+EOS
+echo -n "Allow cheat? (Default: 2): "
+read -r allow_cheat_num
+if [ "$allow_cheat_num" == "" ]; then allow_cheat_num=2 ; fi
+num_validation "$allow_cheat_num" 2
+allow_cheat=${allow_cheat_list[$allow_cheat_num-1]}
+
+cat <<EOS
+
+-*-*-*-*- [PERMISSION (サーバーに参加するユーザー全員の権限)] -*-*-*-*-
+
+[1] visitor (訪問者)
+[2] member (メンバー)
+[3] operator (管理者)
+EOS
+echo -n "Default permission (Default: 2): "
+read -r permission_num
+if [ "$permission_num" == "" ]; then permission_num=2 ; fi
+num_validation "$permission_num" 3
+permission=${permission_num_list[$permission_num-1]}
+
+cat <<EOS
+
+-*-*-*-*- [MAX PLAYERS (同時に接続できる最大人数)] -*-*-*-*-
+
+${player_hint}
+EOS
+echo -n "Max players (Default: ${max_players}): "
+read -r input
+if [ "$input" != "" ]; then
+  positive_num_validation "$input"
+  max_players=$input
+fi
+if [ "$max_players" -gt "$player_warn_over" ]; then
+  echo "[WARN] ${max_players} 人はメモリ ${memory_label} に収まらない可能性があります。"
+fi
+
+cat <<EOS
+
+-*-*-*-*- [SEED (シード値を入力。入力しない場合はランダム)] -*-*-*-*-
+
+EOS
+echo -n "Seed (Default: random): "
+read -r seed
+if [ "$seed" != "" ]; then
+  if [[ ! ("$seed" =~ ^[-0-9][0-9]+$) ]]; then
+    echo "[ERROR] シード値は数字で入力して下さい。"
+    exit 1
+  fi
+fi
 
 # NETWORK ==========
 # OCI does not hand a new tenancy a usable network the way GCP does: a VCN, an
