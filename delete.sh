@@ -41,16 +41,19 @@ wait_with_dots $! || true
 instance_id=$(tr -d '\r\n' < "$find_out")
 rm -f "$find_out" "$find_log"
 
-if [ -z "$instance_id" ] || [ "$instance_id" == "null" ]; then
+if [ "$instance_id" == "null" ]; then instance_id="" ; fi
+
+# Not an exit when nothing is found. A previous run can have removed the
+# instance and then failed partway through the network, and that state needs a
+# way back.
+if [ -z "$instance_id" ]; then
   echo " 完了"
   cat <<EOS
 
 削除できるサーバーが見つかりませんでした。
 すでに削除済みか、まだ作成していません。
-
 EOS
-  exit 0
-fi
+else
 shape=$(oci compute instance get --instance-id "$instance_id" \
   --query 'data.shape' --raw-output 2> /dev/null || true)
 echo " 完了"
@@ -135,6 +138,7 @@ EOS
 fi
 rm -f "$term_log"
 echo " 完了"
+fi
 
 # NETWORK ==========
 # Kept by default. It costs nothing, and leaving it means a later create only
@@ -172,6 +176,14 @@ if [ "$net_num" == "2" ]; then
         oci network subnet delete --subnet-id "$subnet_id" --force \
           --wait-for-state TERMINATED
       fi
+
+      # The route rule pointing at the gateway has to go before the gateway can.
+      # Deleting it outright is not an option: this is the VCN's default route
+      # table, which only disappears with the VCN itself. Emptying the rules is
+      # what releases the reference.
+      rt_id=$(oci network vcn get --vcn-id "$vcn_id" \
+        --query 'data."default-route-table-id"' --raw-output)
+      oci network route-table update --rt-id "$rt_id" --force --route-rules '[]'
 
       igw_id=$(oci network internet-gateway list --compartment-id "$compartment_id" \
         --vcn-id "$vcn_id" --display-name "$IGW_NAME" \
