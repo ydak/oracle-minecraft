@@ -66,24 +66,23 @@ cat <<EOS
 シェイプ : ${shape:-(取得できませんでした)}
 
 ワールドのデータも一緒に消え、元に戻せません。
+残したい場合は、先にメニューから backup を実行してください。
+
+※ 設定を変えたいだけなら、削除せずに config から変更できます。
 EOS
 
-# Only the Ampere shape is worth hesitating over. The micro instances are
-# always available, so warning about losing one would be noise.
+# A note rather than a warning. Re-obtaining an A1 took under a minute on a Pay
+# As You Go account, which is what this repository assumes; on a free account it
+# can genuinely take a while, and that is worth mentioning once without dressing
+# it up as a danger.
 case "$shape" in
   *A1*)
     cat <<EOS
-
-[WARN] 無料枠の Ampere A1 は空きの奪い合いです。
-       一度手放すと、次に作成できる保証がありません。
-       設定を変えたいだけであれば、削除する必要はありません。
-
+※ Ampere A1 は、空きが無いと再作成に時間がかかることがあります。
 EOS
     ;;
-  *)
-    echo ""
-    ;;
 esac
+echo ""
 
 echo -n "本当に削除しますか? [y/N]: "
 read -r delete_yn
