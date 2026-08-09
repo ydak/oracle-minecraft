@@ -10,4 +10,9 @@ permission_num_list=(visitor member operator)
 # Used by the advanced settings, which are all either on/off or a small set of
 # named values.
 bool_list=(true false)
+
+# Both are Always Free. A1 is a flexible shape and takes a --shape-config; the
+# micro shape is fixed and rejects one, so the two cannot be launched with the
+# same arguments.
+shape_list=(VM.Standard.A1.Flex VM.Standard.E2.1.Micro)
 chat_restriction_list=(None Dropped Disabled)

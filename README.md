@@ -37,8 +37,8 @@ curl -fsSL https://raw.githubusercontent.com/ydak/oracle-minecraft/main/mc.sh | 
 
 | 操作 | 状態 |
 | --- | --- |
-| `create` | 未実装 |
-| `delete` | 未実装 |
+| `create` | インスタンス作成まで (検証中) |
+| `delete` | 実装済み (未検証) |
 | `update` | 未着手 |
 | `config` | 未着手 |
 | `backup` / `restore` | 未着手 |
