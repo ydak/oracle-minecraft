@@ -465,22 +465,163 @@ fi
 rm -f "$ip_out" "$ip_log"
 echo " 完了"
 
+# SETUP ==========
+# Done over SSH rather than with cloud-init. user_data only runs on the first
+# boot, so anything built that way could only be changed by replacing the
+# instance, and giving up an Ampere A1 can mean not getting another one. This
+# path also works on an instance that already exists, and can be re-run.
+echo -n "  接続を待機中 "
+ssh_opts=(-i "$ssh_key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+          -o LogLevel=ERROR -o ConnectTimeout=10)
+
+(
+  # RUNNING only means the machine is up; sshd accepts connections a little
+  # after that.
+  for _ in $(seq 1 60); do
+    if ssh "${ssh_opts[@]}" "ubuntu@${external_ip}" true 2> /dev/null; then
+      exit 0
+    fi
+    sleep 5
+  done
+  exit 1
+) &
+ssh_status=0
+wait_with_dots $! || ssh_status=$?
+
+if [ "$ssh_status" -ne 0 ]; then
+  echo " 失敗"
+  cat <<EOS
+
+[ERROR] サーバーに接続できませんでした。
+
+  ssh -i ${ssh_key} ubuntu@${external_ip}
+
+EOS
+  exit 1
+fi
+echo " 完了"
+
+# The settings live in this script, which systemd runs on every boot. Rendered
+# here so that create and a later config change cannot drift apart.
+run_script=$(mktemp)
+render_startup_script "$run_script"
+# Carried over base64 so that quotes and backslashes in the settings survive
+# the trip through two shells.
+run_b64=$(base64 -w0 < "$run_script")
+rm -f "$run_script"
+
+echo -n "  Minecraft を導入中 "
+setup_log=$(mktemp)
+# The here document is deliberately unquoted: run_b64 has to be substituted here
+# so that the script arrives with the settings already in it. It is the only
+# expansion in the block, and the systemd unit below carries no $ of its own.
+# shellcheck disable=SC2087
+ssh "${ssh_opts[@]}" "ubuntu@${external_ip}" "sudo bash -s" > "$setup_log" 2>&1 <<EOS &
+set -e
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update
+apt-get install -y docker.io
+
+# The image ships with iptables rules that drop everything except SSH, so
+# opening the port in the security list alone leaves the server unreachable.
+if ! iptables -C INPUT -p udp --dport 19132 -j ACCEPT 2> /dev/null; then
+  iptables -I INPUT -p udp --dport 19132 -j ACCEPT
+  if command -v netfilter-persistent > /dev/null; then
+    netfilter-persistent save
+  fi
+fi
+
+mkdir -p /opt/minecraft
+echo '${run_b64}' | base64 -d > /opt/minecraft/run.sh
+chmod +x /opt/minecraft/run.sh
+
+# oneshot with RemainAfterExit: run.sh starts a detached container that has its
+# own restart policy, so there is no foreground process for systemd to track.
+cat > /etc/systemd/system/minecraft.service <<'UNIT'
+[Unit]
+Description=Minecraft Bedrock server
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/minecraft/run.sh
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now minecraft.service
+EOS
+setup_status=0
+wait_with_dots $! || setup_status=$?
+
+if [ "$setup_status" -ne 0 ]; then
+  echo " 失敗"
+  echo ""
+  echo "[ERROR] Minecraft の導入に失敗しました。"
+  echo "--------------------------------------------------------------------"
+  cat "$setup_log"
+  echo "--------------------------------------------------------------------"
+  rm -f "$setup_log"
+  exit 1
+fi
+rm -f "$setup_log"
+echo " 完了"
+
+echo ""
+echo -n "マインクラフト起動中 "
+
+# The Bedrock binary is downloaded on the first container start, so this waits
+# on a download as well as a boot.
+if ! wait_for_server "$external_ip" 900; then
+  cat <<EOS
+
+[WARN] 15 分待ちましたが、サーバーが応答しませんでした。
+
+導入は完了しています。起動に時間がかかっているだけかもしれません。
+下記でログを確認できます。
+
+  ssh -i ${ssh_key} ubuntu@${external_ip} 'sudo docker logs mc-server | tail -30'
+
+EOS
+  exit 1
+fi
+
 cat <<EOS
 
-インスタンスの作成が完了しました。
+サーバーの作成が完了しました。
 
 ################################################################################
 ${external_ip}
 ################################################################################
 
+上記の IP アドレスとポート 19132 で接続してください。
+
+--------------------------------------------------------------------
+ サーバー情報
+--------------------------------------------------------------------
+ IP アドレス  : ${external_ip}
+ ポート       : 19132
+ エディション : 統合版 (Bedrock)
+ バージョン   : ${MC_VERSION:-(取得できませんでした)}
  インスタンス : ${SERVER_NAME}
  シェイプ     : ${shape_label}
  リージョン   : $(echo "$availability_domain" | cut -d: -f2)
 
-接続を確認する場合は下記を実行してください。
+--------------------------------------------------------------------
+ 注意
+--------------------------------------------------------------------
+ ・許可リストは無効です。この IP を知っていれば誰でも参加できます。
+ ・サーバーを停止・起動すると IP アドレスが変わります。
+ ・下り通信は 10TB/月 まで無料です。
+
+管理用のコマンドです。
 
   ssh -i ${ssh_key} ubuntu@${external_ip}
-
-※ Minecraft はまだ入っていません。ここまでが第 1 段階です。
+  sudo docker logs mc-server | tail -30
 
 EOS
