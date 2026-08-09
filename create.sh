@@ -12,13 +12,17 @@ VCN_NAME=minecraft-vcn
 SUBNET_NAME=minecraft-subnet
 IGW_NAME=minecraft-igw
 
-# Always Free covers 2 OCPUs and 12 GB of Ampere A1. The trial that runs for the
-# first 30 days allows far more, so the numbers are pinned here rather than
-# taken from whatever the quota currently permits: anything above the Always
-# Free line starts costing money once the trial ends.
-SHAPE=VM.Standard.A1.Flex
-OCPUS=2
-MEMORY_GB=12
+# Always Free covers 2 OCPUs and 12 GB of Ampere A1, and separately two of the
+# AMD micro instances. The trial that runs for the first 30 days allows far
+# more, so the numbers are pinned here rather than taken from whatever the quota
+# currently permits: anything above the Always Free line starts costing money
+# once the trial ends.
+A1_SHAPE=VM.Standard.A1.Flex
+A1_OCPUS=2
+A1_MEMORY_GB=12
+
+# Not a flexible shape, so it takes no shape configuration at all.
+E2_SHAPE=VM.Standard.E2.1.Micro
 
 # Retry interval when the region has no free host to place the instance on.
 RETRY_SECONDS=90
@@ -89,6 +93,40 @@ if [ -n "$existing" ] && [ "$existing" != "null" ]; then
   echo "        作成を中止しました。削除するとインスタンス枠を手放すことになります。"
   echo ""
   exit 1
+fi
+
+# SHAPE ==========
+# Asked before anything is built, because the answer decides which image to look
+# for: the A1 is Arm and the micro is x86.
+cat <<EOS
+
+-*-*-*-*- [SHAPE (サーバーの性能)] -*-*-*-*-
+
+[1] Ampere A1 (2 OCPU / 12GB)
+    無料枠で最も高性能ですが、空きが出るまで作成できません。
+    数時間から数日かかることがあります。
+
+[2] AMD E2.1.Micro (1GB)
+    すぐに作成できます。無料枠に 2 台含まれています。
+    メモリは GCP の e2-micro と同じです。
+
+どちらを選んでも、下り通信 10TB/月 は変わりません。
+EOS
+echo -n "Select shape (Default: 2): "
+read -r shape_num
+if [ "$shape_num" == "" ]; then shape_num=2 ; fi
+num_validation "$shape_num" 2
+
+shape_config_opt=()
+if [ "$shape_num" == "1" ]; then
+  SHAPE=$A1_SHAPE
+  shape_label="${A1_SHAPE} (${A1_OCPUS} OCPU / ${A1_MEMORY_GB} GB)"
+  shape_config_opt=(--shape-config "{\"ocpus\":${A1_OCPUS},\"memoryInGBs\":${A1_MEMORY_GB}}")
+  arch_label="Ubuntu 24.04 (aarch64)"
+else
+  SHAPE=$E2_SHAPE
+  shape_label="${E2_SHAPE} (1 GB)"
+  arch_label="Ubuntu 24.04 (x86_64)"
 fi
 
 # NETWORK ==========
@@ -217,13 +255,15 @@ cat <<EOS
 
 -*-*-*-*- [インスタンスの作成] -*-*-*-*-
 
-シェイプ : ${SHAPE} (${OCPUS} OCPU / ${MEMORY_GB} GB)
-イメージ : Ubuntu 24.04 (aarch64)
+シェイプ : ${shape_label}
+イメージ : ${arch_label}
 
-無料枠の Ampere A1 は空きが出るまで作成できないことがあります。
-その場合は ${RETRY_SECONDS} 秒ごとに自動で再試行します。
+空きが無い場合は ${RETRY_SECONDS} 秒ごとに自動で再試行します。
 待っている間、この画面は開いたままにしてください。
 中断する場合は Ctrl+C を押してください。後で実行し直せます。
+
+[WARN] Cloud Shell は 60 分で切断されます。ドットの出力は操作とみなされません。
+       切断されたら実行し直してください。作成済みのネットワークは再利用されます。
 
 EOS
 
@@ -244,6 +284,7 @@ echo -n "作成中 "
 attempt=0
 started=$SECONDS
 wait_seconds=$RETRY_SECONDS
+clear_streak=0
 instance_id=""
 # Same split as the network step: --wait-for-state writes its progress to
 # stderr, so only stdout may be read back as the instance id.
@@ -259,8 +300,7 @@ while true; do
     --availability-domain "$availability_domain" \
     --subnet-id "$subnet_id" \
     --image-id "$image_id" \
-    --shape "$SHAPE" \
-    --shape-config "{\"ocpus\":${OCPUS},\"memoryInGBs\":${MEMORY_GB}}" \
+    --shape "$SHAPE" "${shape_config_opt[@]}" \
     --display-name "$SERVER_NAME" \
     --assign-public-ip true \
     --ssh-authorized-keys-file "${ssh_key}.pub" \
@@ -279,10 +319,21 @@ while true; do
   # reported straight away rather than retried for hours.
   if grep -qi 'out of host capacity\|outofcapacity' "$launch_log"; then
     reason="空きがないため"
+    # Being told there is no capacity means the request itself was accepted, so
+    # the rate limit is not currently a problem. Ease the interval back down
+    # after a few of those in a row: a single early refusal, often left over
+    # from a previous run, should not hold the pace back for the whole session.
+    clear_streak=$((clear_streak + 1))
+    if [ "$clear_streak" -ge 3 ] && [ "$wait_seconds" -gt "$RETRY_SECONDS" ]; then
+      wait_seconds=$((wait_seconds / 2))
+      if [ "$wait_seconds" -lt "$RETRY_SECONDS" ]; then
+        wait_seconds=$RETRY_SECONDS
+      fi
+      clear_streak=0
+    fi
   elif grep -qi 'toomanyrequests\|"status": *429' "$launch_log"; then
     reason="リクエストの間隔が短すぎるため"
-    # Backed off rather than reset, and never lowered again: the limit is per
-    # user over time, so creeping back up would just trip it once more.
+    clear_streak=0
     wait_seconds=$((wait_seconds * 2))
     if [ "$wait_seconds" -gt "$MAX_RETRY_SECONDS" ]; then
       wait_seconds=$MAX_RETRY_SECONDS
@@ -343,7 +394,7 @@ ${external_ip}
 ################################################################################
 
  インスタンス : ${SERVER_NAME}
- シェイプ     : ${SHAPE} (${OCPUS} OCPU / ${MEMORY_GB} GB)
+ シェイプ     : ${shape_label}
  リージョン   : $(echo "$availability_domain" | cut -d: -f2)
 
 接続を確認する場合は下記を実行してください。
