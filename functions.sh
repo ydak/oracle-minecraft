@@ -128,58 +128,6 @@ function sleep_with_dots() {
 }
 
 ################################################################################
-# Runs a command, showing a short label instead of its output.
-#
-# gcloud prints tables, resource URLs and progress spinners that mean nothing to
-# someone who just wants a Minecraft server, and a wall of them reads as
-# something having gone wrong. The output is captured and only printed when the
-# command fails, which is the point at which it becomes worth reading.
-#
-# Set MC_VERBOSE=1 to pass everything straight through instead.
-#
-# Arguments:
-#   1: Label shown to the user
-#   2+: Command to run
-# Returns:
-#   The exit status of the command
-################################################################################
-function run_step() {
-  local label=$1
-  shift
-
-  if [ "${MC_VERBOSE:-0}" == "1" ]; then
-    echo "  $label ..."
-    "$@"
-    return $?
-  fi
-
-  local log status
-  log=$(mktemp)
-  echo -n "  $label "
-
-  # Run in the background so a dot can be printed every second. Some of these
-  # calls take minutes, and a screen that has not moved reads as a hang.
-  "$@" > "$log" 2>&1 &
-  status=0
-  wait_with_dots $! || status=$?
-
-  if [ "$status" -eq 0 ]; then
-    echo " 完了"
-    rm -f "$log"
-    return 0
-  fi
-
-  echo " 失敗"
-  echo ""
-  echo "[ERROR] 処理に失敗しました。(The step above failed.)"
-  echo "--------------------------------------------------------------------"
-  cat "$log"
-  echo "--------------------------------------------------------------------"
-  rm -f "$log"
-  return $status
-}
-
-################################################################################
 # Receives a string and check if it is a specified number.
 # If it is not a valid number, exits with error code 1.
 #

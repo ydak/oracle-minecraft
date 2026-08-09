@@ -7,10 +7,6 @@ script_dir=$(dirname "${0}")
 # shellcheck source=const.sh
 . "$script_dir/const.sh"
 
-SERVER_NAME=minecraft
-VCN_NAME=minecraft-vcn
-SUBNET_NAME=minecraft-subnet
-IGW_NAME=minecraft-igw
 
 # Always Free covers 2 OCPUs and 12 GB of Ampere A1, and separately two of the
 # AMD micro instances. The trial that runs for the first 30 days allows far
@@ -228,7 +224,7 @@ cat <<EOS
 
 [2] AMD E2.1.Micro (1GB)
     すぐに作成できます。無料枠に 2 台含まれています。
-    メモリは GCP の e2-micro と同じです。
+    メモリは 1GB です。少人数で遊ぶ分には足ります。
 
 どちらを選んでも、下り通信 10TB/月 は変わりません。
 EOS
@@ -493,7 +489,6 @@ echo " 完了"
 # SSH KEY ==========
 # Cloud Shell keeps the home directory between sessions, so a key made here is
 # still around on the next run.
-ssh_key=~/.ssh/id_rsa
 if [ ! -f "${ssh_key}.pub" ]; then
   echo -n "  SSH 鍵を作成中 "
   ssh-keygen -t rsa -b 2048 -f "$ssh_key" -N "" -q &
@@ -653,10 +648,6 @@ echo " 完了"
 # instance, and giving up an Ampere A1 can mean not getting another one. This
 # path also works on an instance that already exists, and can be re-run.
 echo -n "  接続を待機中 "
-# -T because without it a remote tool can decide it is talking to a terminal and
-# start emitting cursor control, which lands in the middle of the progress dots.
-ssh_opts=(-T -i "$ssh_key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
-          -o LogLevel=ERROR -o ConnectTimeout=10)
 
 (
   # RUNNING only means the machine is up; sshd accepts connections a little

@@ -7,12 +7,6 @@ script_dir=$(dirname "${0}")
 # shellcheck source=const.sh
 . "$script_dir/const.sh"
 
-SERVER_NAME=minecraft
-BUCKET=minecraft-backup
-VOLUME_PATH=/var/lib/docker/volumes/mc-volume/_data
-ssh_key=~/.ssh/id_rsa
-ssh_opts=(-T -i "$ssh_key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
-          -o LogLevel=ERROR -o ConnectTimeout=10)
 
 echo ""
 echo "==================== ワールドのバックアップ ===================="

@@ -7,10 +7,6 @@ script_dir=$(dirname "${0}")
 # shellcheck source=const.sh
 . "$script_dir/const.sh"
 
-SERVER_NAME=minecraft
-VCN_NAME=minecraft-vcn
-SUBNET_NAME=minecraft-subnet
-IGW_NAME=minecraft-igw
 
 echo ""
 echo "==================== Minecraft サーバーの削除 ===================="
