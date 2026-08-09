@@ -227,13 +227,17 @@ cat <<EOS
 
 EOS
 
-# The CLI retries some failures on its own, which turns one attempt here into
-# several calls to the API and reaches the rate limit sooner. A single failed
-# launch taking over a minute is what gives it away. The flag is not in the
-# usage guide, so ask the CLI whether it has it rather than assume.
+# The CLI retries some failures on its own, five times by default, which turns
+# one attempt here into several calls to the API and reaches the rate limit
+# sooner. A single failed launch taking over a minute is what gave it away.
+#
+# Two ways of switching that off, because neither is guaranteed to be present:
+# --max-retries is asked for rather than assumed, since --no-retry turned out
+# not to exist on this subcommand, and the environment variable is set
+# regardless because an unrecognised one is ignored rather than fatal.
 no_retry_opt=()
-if oci compute instance launch --help 2> /dev/null | grep -q -- '--no-retry'; then
-  no_retry_opt=(--no-retry)
+if oci compute instance launch --help 2> /dev/null | grep -q -- '--max-retries'; then
+  no_retry_opt=(--max-retries 0)
 fi
 
 echo -n "作成中 "
@@ -249,6 +253,7 @@ launch_log=$(mktemp)
 while true; do
   attempt=$((attempt + 1))
 
+  OCI_SDK_DEFAULT_RETRY_ENABLED=false \
   oci compute instance launch \
     --compartment-id "$compartment_id" \
     --availability-domain "$availability_domain" \
