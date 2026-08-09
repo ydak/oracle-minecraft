@@ -504,12 +504,8 @@ cat <<EOS
 シェイプ : ${shape_label}
 イメージ : ${arch_label}
 
-空きが無い場合は ${RETRY_SECONDS} 秒ごとに自動で再試行します。
-待っている間、この画面は開いたままにしてください。
+空きが無い場合は自動で再試行します。
 中断する場合は Ctrl+C を押してください。後で実行し直せます。
-
-[WARN] Cloud Shell は 60 分で切断されます。ドットの出力は操作とみなされません。
-       切断されたら実行し直してください。作成済みのネットワークは再利用されます。
 
 EOS
 
@@ -598,6 +594,21 @@ while true; do
   echo ""
   printf '  %s待機します (%d 回目, 経過 %d 分, 次は %d 分後)\n' \
     "$reason" "$attempt" "$(( (SECONDS - started) / 60 ))" "$(( wait_seconds / 60 ))"
+
+  # Said once, and only once a wait has actually started. Creation usually
+  # finishes in under a minute, and leading with a warning about an hour-long
+  # session limit would be describing a problem that is not happening.
+  if [ "$attempt" -eq 1 ]; then
+    cat <<EOS
+
+  ※ この画面は開いたままにしてください。しばらく操作しないと
+     Cloud Shell 側の都合で接続が切れることがあります。その場合は
+     実行し直してください。ここまでに作った設定は再利用されるので、
+     続きから始まります。
+
+EOS
+  fi
+
   echo -n "  再試行待機中 "
   sleep_with_dots "$wait_seconds"
   echo ""
