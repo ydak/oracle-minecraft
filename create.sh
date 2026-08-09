@@ -58,9 +58,16 @@ oci_info=$(mktemp)
 (
   ad=$(oci iam availability-domain list --query 'data[0].name' --raw-output)
   printf 'availability_domain=%q\n' "$ad"
+  # Always Free only applies in the home region, so which region this is
+  # running against decides whether the instance below is free or billed.
+  # shellcheck disable=SC2016
+  printf 'home_region=%q\n' \
+    "$(oci iam region-subscription list \
+       --query 'data[?"is-home-region"]|[0]."region-name"' --raw-output)"
 ) > "$oci_info" 2> /dev/null &
 wait_with_dots $! || true
 availability_domain=""
+home_region=""
 # shellcheck disable=SC1090
 . "$oci_info"
 rm -f "$oci_info"
@@ -73,6 +80,37 @@ if [ -z "$availability_domain" ]; then
   exit 1
 fi
 echo " 完了"
+
+# HOME REGION ==========
+# The availability domain carries the region in it, as Uocm:AP-OSAKA-1-AD-1, so
+# there is no second call to make for this.
+current_region=$(echo "$availability_domain" | cut -d: -f2 | sed 's/-AD-[0-9]*$//' \
+  | tr '[:upper:]' '[:lower:]')
+
+if [ -n "$home_region" ] && [ "$current_region" != "$home_region" ]; then
+  cat <<EOS
+
+[WARN] 無料枠の対象外のリージョンです。
+
+ いま接続中 : ${current_region}
+ ホーム     : ${home_region}
+
+Always Free はホームリージョンでしか適用されません。ここに作成すると、
+同じ構成でも通常料金がかかります。2 OCPU / 12GB で月 25〜30 ドル程度です。
+
+無料で作成するには、コンソール右上のリージョンを ${home_region} に切り替えて
+から、Cloud Shell を開き直して下さい。
+
+EOS
+  echo -n "料金が発生することを理解した上で続けますか? [y/N]: "
+  read -r region_yn
+  if [ "$region_yn" != "y" ]; then
+    echo ""
+    echo "中止しました。"
+    echo ""
+    exit 1
+  fi
+fi
 
 # EXISTING SERVER ==========
 # Ampere A1 capacity is scarce enough that giving one up can mean not getting
