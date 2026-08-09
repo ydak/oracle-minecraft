@@ -296,7 +296,7 @@ while true; do
   echo ""
   printf '  %s待機します (%d 回目, 経過 %d 分, 次は %d 分後)\n' \
     "$reason" "$attempt" "$(( (SECONDS - started) / 60 ))" "$(( wait_seconds / 60 ))"
-  echo -n "  再試行まで "
+  echo -n "  再試行待機中 "
   sleep_with_dots "$wait_seconds"
   echo ""
   echo -n "作成中 "
