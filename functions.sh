@@ -63,6 +63,12 @@ function render_startup_script() {
   # iptables here, so on NetherNet the server comes up with nothing able to
   # reach it, and the RakNet ping that waits for it to start never gets an
   # answer.
+  #
+  # TCP 19132 is published anyway, with nothing behind it. A current client asks
+  # GET /v1/join over TCP before anything else, to fill in the server list, and
+  # only turns to the RakNet ping once that fails. Dropped silently, the list
+  # sits on "Loading ping" until the client gives up. Published, the container
+  # answers with a reset straight away.
   # shellcheck disable=SC2154
   cat > "$out" <<EOS
 #!/bin/bash
@@ -85,7 +91,7 @@ if docker pull itzg/minecraft-bedrock-server:latest; then
 fi
 
 if ! docker inspect mc-server > /dev/null 2>&1; then
-  docker run -d -it --name mc-server --restart=always -e EULA=TRUE -e TRANSPORT=raknet -e SERVER_NAME=$q_server_name -e GAMEMODE=${game_mode:-survival} -e FORCE_GAMEMODE=${force_gamemode:-false} -e DIFFICULTY=${difficulty:-normal} -e ALLOW_CHEATS=${allow_cheat:-false} -e ALLOW_LIST=${allow_list:-false} -e ALLOW_LIST_USERS=$q_allow_list_users -e MAX_PLAYERS=${max_players:-2} -e VIEW_DISTANCE=${view_distance:-5} -e TICK_DISTANCE=${tick_distance:-4} -e PLAYER_IDLE_TIMEOUT=${player_idle_timeout:-5} -e DEFAULT_PLAYER_PERMISSION_LEVEL=${permission:-member} -e CHAT_RESTRICTION=${chat_restriction:-None} -e DISABLE_PLAYER_INTERACTION=${disable_player_interaction:-false} -e TEXTUREPACK_REQUIRED=${texturepack_required:-false} -e DISABLE_CUSTOM_SKINS=${disable_custom_skins:-false} -e LEVEL_SEED=$q_seed -p 19132:19132/udp -v mc-volume:/data itzg/minecraft-bedrock-server:latest
+  docker run -d -it --name mc-server --restart=always -e EULA=TRUE -e TRANSPORT=raknet -e SERVER_NAME=$q_server_name -e GAMEMODE=${game_mode:-survival} -e FORCE_GAMEMODE=${force_gamemode:-false} -e DIFFICULTY=${difficulty:-normal} -e ALLOW_CHEATS=${allow_cheat:-false} -e ALLOW_LIST=${allow_list:-false} -e ALLOW_LIST_USERS=$q_allow_list_users -e MAX_PLAYERS=${max_players:-2} -e VIEW_DISTANCE=${view_distance:-5} -e TICK_DISTANCE=${tick_distance:-4} -e PLAYER_IDLE_TIMEOUT=${player_idle_timeout:-5} -e DEFAULT_PLAYER_PERMISSION_LEVEL=${permission:-member} -e CHAT_RESTRICTION=${chat_restriction:-None} -e DISABLE_PLAYER_INTERACTION=${disable_player_interaction:-false} -e TEXTUREPACK_REQUIRED=${texturepack_required:-false} -e DISABLE_CUSTOM_SKINS=${disable_custom_skins:-false} -e LEVEL_SEED=$q_seed -p 19132:19132/udp -p 19132:19132/tcp -v mc-volume:/data itzg/minecraft-bedrock-server:latest
 fi
 EOS
 }

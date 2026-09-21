@@ -427,7 +427,9 @@ net_out=$(mktemp)
       {"protocol":"6","source":"0.0.0.0/0","isStateless":false,
        "tcpOptions":{"destinationPortRange":{"min":22,"max":22}}},
       {"protocol":"17","source":"0.0.0.0/0","isStateless":false,
-       "udpOptions":{"destinationPortRange":{"min":19132,"max":19132}}}
+       "udpOptions":{"destinationPortRange":{"min":19132,"max":19132}}},
+      {"protocol":"6","source":"0.0.0.0/0","isStateless":false,
+       "tcpOptions":{"destinationPortRange":{"min":19132,"max":19132}}}
     ]'
 
   subnet_id=$(oci network subnet list --compartment-id "$compartment_id" \
@@ -703,11 +705,16 @@ apt-get install -y docker.io
 
 # The image ships with iptables rules that drop everything except SSH, so
 # opening the port in the security list alone leaves the server unreachable.
-if ! iptables -C INPUT -p udp --dport 19132 -j ACCEPT 2> /dev/null; then
-  iptables -I INPUT -p udp --dport 19132 -j ACCEPT
-  if command -v netfilter-persistent > /dev/null; then
-    netfilter-persistent save
+#
+# TCP as well as UDP: a current client asks for the server list over TCP first,
+# and a silent drop leaves it waiting (see render_startup_script).
+for proto in udp tcp; do
+  if ! iptables -C INPUT -p \$proto --dport 19132 -j ACCEPT 2> /dev/null; then
+    iptables -I INPUT -p \$proto --dport 19132 -j ACCEPT
   fi
+done
+if command -v netfilter-persistent > /dev/null; then
+  netfilter-persistent save
 fi
 
 mkdir -p /opt/minecraft
